@@ -32,21 +32,3 @@ jobs:
         # but Vite defaults don't strictly fail without env vars unless explicitly checked
         run: npm run build
 
-  deploy-schema:
-    needs: build
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Execute SQL script
-        env:
-          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
-        run: |
-          if [ -z "$SUPABASE_DB_URL" ]; then
-            echo "Error: SUPABASE_DB_URL secret is not set."
-            exit 1
-          fi
-          
-          psql "$SUPABASE_DB_URL" -f schema.sql
