@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { App as CapacitorApp } from '@capacitor/app';
 import { supabase } from './supabaseClient';
 import BookForm from './components/BookForm';
 import BookList from './components/BookList';
@@ -22,7 +23,27 @@ function App() {
       setSession(session);
     });
 
-    return () => subscription.unsubscribe();
+    const urlListener = CapacitorApp.addListener('appUrlOpen', async (event) => {
+      if (event.url.includes('com.jbelborja.supabaseexample://login-callback')) {
+        const url = new URL(event.url);
+        // Supabase passes tokens in the hash
+        const hashParams = new URLSearchParams(url.hash.substring(1));
+        const accessToken = hashParams.get('access_token');
+        const refreshToken = hashParams.get('refresh_token');
+        
+        if (accessToken) {
+          await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          });
+        }
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+      urlListener.then(listener => listener.remove());
+    };
   }, []);
 
   useEffect(() => {

@@ -37,6 +37,9 @@ export default function Auth() {
   const handleGoogleLogin = async () => {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
+      options: {
+        redirectTo: 'com.jbelborja.supabaseexample://login-callback',
+      },
     });
     if (error) {
       alert(error.error_description || error.message);
