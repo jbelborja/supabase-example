@@ -1,0 +1,28 @@
+name: Deploy Supabase Schema
+
+on:
+  push:
+    paths:
+      - 'schema.sql'
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy-schema:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Execute SQL script
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -z "$SUPABASE_DB_URL" ]; then
+            echo "Error: SUPABASE_DB_URL secret is not set."
+            exit 1
+          fi
+          
+          # We use psql which is pre-installed on ubuntu-latest GitHub runners
+          psql "$SUPABASE_DB_URL" -f schema.sql
