@@ -13,7 +13,9 @@ alter default privileges for role postgres in schema public grant all on tables 
 alter default privileges for role postgres in schema public grant all on routines  to anon, authenticated, service_role;
 alter default privileges for role postgres in schema public grant all on sequences to anon, authenticated, service_role;
 
--- 1. Shopping Lists
+-- ── 1. TABLE DEFINITIONS ──────────────────────────────────────────────────────
+
+-- shopping_lists
 create table if not exists shopping_lists (
   id         uuid default gen_random_uuid() primary key,
   owner_id   uuid references auth.users(id) on delete cascade not null,
@@ -21,8 +23,47 @@ create table if not exists shopping_lists (
   created_at timestamptz default now() not null
 );
 
-alter table shopping_lists enable row level security;
+-- list_shares
+create table if not exists list_shares (
+  id                uuid default gen_random_uuid() primary key,
+  list_id           uuid references shopping_lists(id) on delete cascade not null,
+  shared_with_email text not null,
+  shared_with_id    uuid references auth.users(id) on delete cascade,
+  created_at        timestamptz default now() not null,
+  unique(list_id, shared_with_email)
+);
 
+-- categories (per list)
+create table if not exists categories (
+  id       uuid default gen_random_uuid() primary key,
+  list_id  uuid references shopping_lists(id) on delete cascade not null,
+  name     text not null,
+  color    text default '#6366f1',
+  position int  default 0
+);
+
+-- items
+create table if not exists items (
+  id          uuid default gen_random_uuid() primary key,
+  list_id     uuid references shopping_lists(id) on delete cascade not null,
+  category_id uuid references categories(id) on delete set null,
+  name        text not null,
+  quantity    numeric default 1,
+  unit        text default '',
+  checked     boolean default false,
+  created_at  timestamptz default now() not null
+);
+
+-- ── 2. ROW LEVEL SECURITY (RLS) ──────────────────────────────────────────────
+
+alter table shopping_lists enable row level security;
+alter table list_shares    enable row level security;
+alter table categories     enable row level security;
+alter table items          enable row level security;
+
+-- ── 3. POLICIES ─────────────────────────────────────────────────────────────
+
+-- shopping_lists policies
 create policy "Owner full access" on shopping_lists
   for all using (auth.uid() = owner_id);
 
@@ -35,18 +76,7 @@ create policy "Shared users can read" on shopping_lists
     )
   );
 
--- 2. List Shares
-create table if not exists list_shares (
-  id                uuid default gen_random_uuid() primary key,
-  list_id           uuid references shopping_lists(id) on delete cascade not null,
-  shared_with_email text not null,
-  shared_with_id    uuid references auth.users(id) on delete cascade,
-  created_at        timestamptz default now() not null,
-  unique(list_id, shared_with_email)
-);
-
-alter table list_shares enable row level security;
-
+-- list_shares policies
 create policy "Owner manages shares" on list_shares
   for all using (
     exists (
@@ -59,17 +89,7 @@ create policy "Owner manages shares" on list_shares
 create policy "Shared user reads own share" on list_shares
   for select using (shared_with_id = auth.uid());
 
--- 3. Categories (per list)
-create table if not exists categories (
-  id       uuid default gen_random_uuid() primary key,
-  list_id  uuid references shopping_lists(id) on delete cascade not null,
-  name     text not null,
-  color    text default '#6366f1',
-  position int  default 0
-);
-
-alter table categories enable row level security;
-
+-- categories policies
 create policy "List members manage categories" on categories
   for all using (
     exists (
@@ -86,20 +106,7 @@ create policy "List members manage categories" on categories
     )
   );
 
--- 4. Items
-create table if not exists items (
-  id          uuid default gen_random_uuid() primary key,
-  list_id     uuid references shopping_lists(id) on delete cascade not null,
-  category_id uuid references categories(id) on delete set null,
-  name        text not null,
-  quantity    numeric default 1,
-  unit        text default '',
-  checked     boolean default false,
-  created_at  timestamptz default now() not null
-);
-
-alter table items enable row level security;
-
+-- items policies
 create policy "List members manage items" on items
   for all using (
     exists (
@@ -115,6 +122,8 @@ create policy "List members manage items" on items
         )
     )
   );
+
+-- ── 4. REALTIME PUBLICATION ──────────────────────────────────────────────────
 
 -- Enable realtime for live collaboration
 alter publication supabase_realtime add table items;
