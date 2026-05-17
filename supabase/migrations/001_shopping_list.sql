@@ -1,7 +1,17 @@
--- ============================================================
--- Shopping List App — Database Schema
--- Run this in your Supabase SQL editor to set up the schema.
--- ============================================================
+-- =============================================================
+-- Shopping List App — Migration 001
+-- Runs automatically on first `docker compose up` via
+-- /docker-entrypoint-initdb.d inside supabase/postgres.
+-- =============================================================
+
+-- Grant Supabase roles access to the public schema
+grant usage on schema public to anon, authenticated, service_role;
+grant all on all tables    in schema public to anon, authenticated, service_role;
+grant all on all routines  in schema public to anon, authenticated, service_role;
+grant all on all sequences in schema public to anon, authenticated, service_role;
+alter default privileges for role postgres in schema public grant all on tables    to anon, authenticated, service_role;
+alter default privileges for role postgres in schema public grant all on routines  to anon, authenticated, service_role;
+alter default privileges for role postgres in schema public grant all on sequences to anon, authenticated, service_role;
 
 -- 1. Shopping Lists
 create table if not exists shopping_lists (
@@ -13,12 +23,10 @@ create table if not exists shopping_lists (
 
 alter table shopping_lists enable row level security;
 
-drop policy if exists "Owner can manage their lists" on shopping_lists;
-create policy "Owner can manage their lists" on shopping_lists
+create policy "Owner full access" on shopping_lists
   for all using (auth.uid() = owner_id);
 
-drop policy if exists "Shared users can view lists" on shopping_lists;
-create policy "Shared users can view lists" on shopping_lists
+create policy "Shared users can read" on shopping_lists
   for select using (
     exists (
       select 1 from list_shares
@@ -29,18 +37,17 @@ create policy "Shared users can view lists" on shopping_lists
 
 -- 2. List Shares
 create table if not exists list_shares (
-  id                  uuid default gen_random_uuid() primary key,
-  list_id             uuid references shopping_lists(id) on delete cascade not null,
-  shared_with_email   text not null,
-  shared_with_id      uuid references auth.users(id) on delete cascade,
-  created_at          timestamptz default now() not null,
+  id                uuid default gen_random_uuid() primary key,
+  list_id           uuid references shopping_lists(id) on delete cascade not null,
+  shared_with_email text not null,
+  shared_with_id    uuid references auth.users(id) on delete cascade,
+  created_at        timestamptz default now() not null,
   unique(list_id, shared_with_email)
 );
 
 alter table list_shares enable row level security;
 
-drop policy if exists "Owner can manage shares" on list_shares;
-create policy "Owner can manage shares" on list_shares
+create policy "Owner manages shares" on list_shares
   for all using (
     exists (
       select 1 from shopping_lists
@@ -49,8 +56,7 @@ create policy "Owner can manage shares" on list_shares
     )
   );
 
-drop policy if exists "Shared user can see their own share" on list_shares;
-create policy "Shared user can see their own share" on list_shares
+create policy "Shared user reads own share" on list_shares
   for select using (shared_with_id = auth.uid());
 
 -- 3. Categories (per list)
@@ -64,8 +70,7 @@ create table if not exists categories (
 
 alter table categories enable row level security;
 
-drop policy if exists "List members can manage categories" on categories;
-create policy "List members can manage categories" on categories
+create policy "List members manage categories" on categories
   for all using (
     exists (
       select 1 from shopping_lists
@@ -95,8 +100,7 @@ create table if not exists items (
 
 alter table items enable row level security;
 
-drop policy if exists "List members can manage items" on items;
-create policy "List members can manage items" on items
+create policy "List members manage items" on items
   for all using (
     exists (
       select 1 from shopping_lists
@@ -112,5 +116,5 @@ create policy "List members can manage items" on items
     )
   );
 
--- Enable Realtime for live collaboration on items
+-- Enable realtime for live collaboration
 alter publication supabase_realtime add table items;

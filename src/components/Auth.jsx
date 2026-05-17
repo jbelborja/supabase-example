@@ -1,5 +1,14 @@
 import { useState } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { supabase } from '../supabaseClient';
+
+// Use the Android deep-link only when running as a native app.
+// In a browser (local dev or web) redirect back to the current origin
+// so the auth callback is handled by the same tab.
+const getOAuthRedirect = () =>
+  Capacitor.isNativePlatform()
+    ? 'com.jbelborja.supabaseexample://login-callback'
+    : window.location.origin;
 
 export default function Auth() {
   const [loading, setLoading] = useState(false);
@@ -11,7 +20,7 @@ export default function Auth() {
     e.preventDefault();
     setLoading(true);
     let error;
-    
+
     if (isLogin) {
       const { error: signInError } = await supabase.auth.signInWithPassword({
         email,
@@ -38,7 +47,7 @@ export default function Auth() {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: 'com.jbelborja.supabaseexample://login-callback',
+        redirectTo: getOAuthRedirect(),
       },
     });
     if (error) {
@@ -51,7 +60,7 @@ export default function Auth() {
       <div className="auth-card">
         <h2>{isLogin ? 'Welcome Back' : 'Create Account'}</h2>
         <p className="auth-subtitle">
-          {isLogin ? 'Sign in to access your library' : 'Sign up to start organizing'}
+          {isLogin ? 'Sign in to access your shopping lists' : 'Sign up to start shopping smarter'}
         </p>
         
         <button 
