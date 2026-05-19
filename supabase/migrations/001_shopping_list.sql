@@ -63,27 +63,37 @@ alter table items          enable row level security;
 
 -- ── 3. POLICIES ─────────────────────────────────────────────────────────────
 
+-- Helper function to check if a user is the owner of a list, bypassing RLS
+create or replace function public.is_list_owner(list_id uuid)
+returns boolean as $$
+  select exists (
+    select 1 from shopping_lists
+    where id = list_id and owner_id = auth.uid()
+  );
+$$ language sql security definer set search_path = public;
+
+-- Helper function to check if a user is a shared member of a list, bypassing RLS
+create or replace function public.is_list_shared_user(list_id uuid)
+returns boolean as $$
+  select exists (
+    select 1 from list_shares
+    where list_shares.list_id = list_id and shared_with_id = auth.uid()
+  );
+$$ language sql security definer set search_path = public;
+
 -- shopping_lists policies
 create policy "Owner full access" on shopping_lists
   for all using (auth.uid() = owner_id);
 
 create policy "Shared users can read" on shopping_lists
   for select using (
-    exists (
-      select 1 from list_shares
-      where list_shares.list_id = shopping_lists.id
-        and list_shares.shared_with_id = auth.uid()
-    )
+    public.is_list_shared_user(id)
   );
 
 -- list_shares policies
 create policy "Owner manages shares" on list_shares
   for all using (
-    exists (
-      select 1 from shopping_lists
-      where shopping_lists.id = list_shares.list_id
-        and shopping_lists.owner_id = auth.uid()
-    )
+    public.is_list_owner(list_id)
   );
 
 create policy "Shared user reads own share" on list_shares
@@ -92,35 +102,13 @@ create policy "Shared user reads own share" on list_shares
 -- categories policies
 create policy "List members manage categories" on categories
   for all using (
-    exists (
-      select 1 from shopping_lists
-      where shopping_lists.id = categories.list_id
-        and (
-          shopping_lists.owner_id = auth.uid()
-          or exists (
-            select 1 from list_shares
-            where list_shares.list_id = categories.list_id
-              and list_shares.shared_with_id = auth.uid()
-          )
-        )
-    )
+    public.is_list_owner(list_id) or public.is_list_shared_user(list_id)
   );
 
 -- items policies
 create policy "List members manage items" on items
   for all using (
-    exists (
-      select 1 from shopping_lists
-      where shopping_lists.id = items.list_id
-        and (
-          shopping_lists.owner_id = auth.uid()
-          or exists (
-            select 1 from list_shares
-            where list_shares.list_id = items.list_id
-              and list_shares.shared_with_id = auth.uid()
-          )
-        )
-    )
+    public.is_list_owner(list_id) or public.is_list_shared_user(list_id)
   );
 
 -- ── 4. REALTIME PUBLICATION ──────────────────────────────────────────────────
